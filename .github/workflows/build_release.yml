@@ -1,0 +1,75 @@
+name: Build & Release Speny APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 'jules-**'
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  build:
+    name: Build Flutter Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Set up Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Run Tests
+        run: flutter test
+
+      - name: Build Release APK
+        run: flutter build apk --release
+
+      - name: Prepare APK Artifact Name
+        run: |
+          VERSION="0.0.1"
+          APK_NAME="Speny V${VERSION} - craftplex.apk"
+          mkdir -p build_output
+          cp build/app/outputs/flutter-apk/app-release.apk "build_output/${APK_NAME}"
+          echo "APK_PATH=build_output/${APK_NAME}" >> $GITHUB_ENV
+          echo "APK_NAME=${APK_NAME}" >> $GITHUB_ENV
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Speny-APK
+          path: ${{ env.APK_PATH }}
+
+      - name: Create GitHub Release (On Tag or Push to Main/Master)
+        if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.APK_PATH }}
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            Automatic GitHub CI/CD Build for Speny Expense Tracker.
+            App Name: Speny
+            Package: com.craftplex.speny
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
