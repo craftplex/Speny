@@ -33,3 +33,12 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Additional ignores for sandbox git diff limit
+.dart_tool/
+android/
+ios/
+macos/
+windows/
+linux/
+web/
