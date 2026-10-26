@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'screens/home_screen.dart';
 import 'screens/reports_screen.dart';
 import 'screens/budgets_screen.dart';
@@ -42,6 +43,27 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
   final ScrollController _settingsScrollController = ScrollController();
 
   @override
+  void initState() {
+    super.initState();
+    _homeScrollController.addListener(() => _handleScroll(_homeScrollController));
+    _budgetsScrollController.addListener(() => _handleScroll(_budgetsScrollController));
+    _aiScrollController.addListener(() => _handleScroll(_aiScrollController));
+    _settingsScrollController.addListener(() => _handleScroll(_settingsScrollController));
+  }
+
+  void _handleScroll(ScrollController controller) {
+    if (controller.position.userScrollDirection == ScrollDirection.reverse) {
+      if (_isNavBarVisible) {
+        setState(() => _isNavBarVisible = false);
+      }
+    } else if (controller.position.userScrollDirection == ScrollDirection.forward) {
+      if (!_isNavBarVisible) {
+        setState(() => _isNavBarVisible = true);
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _homeScrollController.dispose();
     _budgetsScrollController.dispose();
@@ -54,7 +76,17 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
   Widget build(BuildContext context) {
     final List<Widget> screens = [
       HomeScreen(scrollController: _homeScrollController),
-      const ReportsScreen(),
+      NotificationListener<UserScrollNotification>(
+        onNotification: (notification) {
+          if (notification.direction == ScrollDirection.reverse && _isNavBarVisible) {
+            setState(() => _isNavBarVisible = false);
+          } else if (notification.direction == ScrollDirection.forward && !_isNavBarVisible) {
+            setState(() => _isNavBarVisible = true);
+          }
+          return true;
+        },
+        child: const ReportsScreen(),
+      ),
       BudgetsScreen(scrollController: _budgetsScrollController),
       AiAdvisoryScreen(scrollController: _aiScrollController),
       SettingsScreen(scrollController: _settingsScrollController),

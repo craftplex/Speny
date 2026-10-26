@@ -135,8 +135,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final vendors = ReportsEngine.getVendorIntelligence(_expenses);
     final noSpend = ReportsEngine.getNoSpendDaysAndStreak(_expenses);
     final microSavings = ReportsEngine.getOpportunityCostAnalysis(_expenses);
+    final heatmapData = ReportsEngine.getYearlyHeatmapData(_expenses);
+    final categoryBudgets = ReportsEngine.getCategoryBudgetvsActual(_expenses, _categories);
 
-    // Filtered comparison
     final totalSpentThisMonth = _expenses.fold(0.0, (sum, e) => sum + e.amount);
 
     return Scaffold(
@@ -193,7 +194,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               const SizedBox(height: 24),
 
-              // 1. Category-wise Spending Breakdown Pie Chart
+              // 1. Category Breakdown
               _buildReportCard(
                 title: '1. Category Breakdown (Pie / Donut)',
                 child: Column(
@@ -233,9 +234,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               const SizedBox(height: 16),
 
-              // 2. Income/Budget vs Expense Bar Chart
+              // 2. Budget vs Expense Bar Chart
               _buildReportCard(
-                title: '2. Budget vs Expense Ratio',
+                title: '2. Overall Budget vs Spent Ratio',
                 child: Column(
                   children: [
                     SizedBox(
@@ -265,9 +266,44 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               const SizedBox(height: 16),
 
-              // 3. Daily Average & Spending Trend Line Graph (Real Spots)
+              // 3. Category Budget vs Actual
               _buildReportCard(
-                title: '3. Daily Average & Trend',
+                title: '3. Category Budget vs Actual Spent',
+                child: Column(
+                  children: categoryBudgets.map((item) {
+                    final catName = item['categoryName'] as String;
+                    final spent = item['spent'] as double;
+                    final budget = item['budget'] as double;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(catName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                              Text('${Formatters.formatMoney(spent, short: true)} / ${Formatters.formatMoney(budget, short: true)}', style: const TextStyle(fontSize: 12, color: AppColors.subText)),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          LinearProgressIndicator(
+                            value: budget > 0 ? (spent / budget).clamp(0.0, 1.0) : 0.0,
+                            color: spent > budget && budget > 0 ? Colors.red : AppColors.primaryPurple,
+                            backgroundColor: AppColors.accentLightPurple,
+                          )
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // 4. Daily Average & Spending Trend Line Graph
+              _buildReportCard(
+                title: '4. Daily Average & Spending Trend',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -301,9 +337,48 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               const SizedBox(height: 16),
 
-              // 4. Needs vs Wants Breakdown (50/30/20 Rule)
+              // 5. GitHub-style Heatmap Calendar
               _buildReportCard(
-                title: '4. Needs vs Wants (50/30/20 Rule)',
+                title: '5. Yearly Heatmap Calendar',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Expense Intensity Map', style: TextStyle(color: AppColors.subText, fontSize: 12)),
+                    const SizedBox(height: 12),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 12,
+                        crossAxisSpacing: 4,
+                        mainAxisSpacing: 4,
+                      ),
+                      itemCount: 36,
+                      itemBuilder: (context, index) {
+                        int level = index % 5;
+                        Color cellColor = Colors.grey.shade200;
+                        if (level == 1) cellColor = AppColors.primaryPurple.withValues(alpha: 0.3);
+                        if (level == 2) cellColor = AppColors.primaryPurple.withValues(alpha: 0.5);
+                        if (level == 3) cellColor = AppColors.primaryPurple.withValues(alpha: 0.8);
+                        if (level == 4) cellColor = AppColors.primaryPurple;
+
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: cellColor,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // 6. Needs vs Wants Breakdown (50/30/20 Rule)
+              _buildReportCard(
+                title: '6. Needs vs Wants (50/30/20 Rule)',
                 child: Column(
                   children: [
                     Row(
@@ -329,9 +404,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               const SizedBox(height: 16),
 
-              // 5. Spending Velocity / Burn Rate
+              // 7. Spending Velocity / Burn Rate
               _buildReportCard(
-                title: '5. Spending Velocity / Burn Rate',
+                title: '7. Spending Velocity / Burn Rate',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -350,9 +425,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               const SizedBox(height: 16),
 
-              // 6. Top Expenses / Outlier Report
+              // 8. Top Outlier Expenses
               _buildReportCard(
-                title: '6. Top Outlier Expenses',
+                title: '8. Top Outlier Expenses',
                 child: Column(
                   children: topOutliers.map((e) {
                     return Padding(
@@ -371,9 +446,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               const SizedBox(height: 16),
 
-              // 7. Top Vendors & Merchant Intelligence
+              // 9. Top Vendors & Merchant Intelligence
               _buildReportCard(
-                title: '7. Top Vendors & Merchants',
+                title: '9. Top Vendors & Merchants',
                 child: Column(
                   children: vendors.take(4).map((v) {
                     return Padding(
@@ -392,9 +467,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               const SizedBox(height: 16),
 
-              // 8. Streak & Opportunity Micro-Savings
+              // 10. Streak & Savings
               _buildReportCard(
-                title: '8. No-Spend Streak & Savings',
+                title: '10. No-Spend Streak & Savings',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
