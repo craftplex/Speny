@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
+import 'models/app_models.dart';
+import 'screens/add_edit_expense_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/reports_screen.dart';
 import 'screens/budgets_screen.dart';
@@ -35,33 +36,11 @@ class MainNavigationWrapper extends StatefulWidget {
 
 class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
   int _selectedIndex = 0;
-  bool _isNavBarVisible = true;
-
+  int _dataVersion = 0;
   final ScrollController _homeScrollController = ScrollController();
   final ScrollController _budgetsScrollController = ScrollController();
   final ScrollController _aiScrollController = ScrollController();
   final ScrollController _settingsScrollController = ScrollController();
-
-  @override
-  void initState() {
-    super.initState();
-    _homeScrollController.addListener(() => _handleScroll(_homeScrollController));
-    _budgetsScrollController.addListener(() => _handleScroll(_budgetsScrollController));
-    _aiScrollController.addListener(() => _handleScroll(_aiScrollController));
-    _settingsScrollController.addListener(() => _handleScroll(_settingsScrollController));
-  }
-
-  void _handleScroll(ScrollController controller) {
-    if (controller.position.userScrollDirection == ScrollDirection.reverse) {
-      if (_isNavBarVisible) {
-        setState(() => _isNavBarVisible = false);
-      }
-    } else if (controller.position.userScrollDirection == ScrollDirection.forward) {
-      if (!_isNavBarVisible) {
-        setState(() => _isNavBarVisible = true);
-      }
-    }
-  }
 
   @override
   void dispose() {
@@ -74,48 +53,56 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> screens = [
-      HomeScreen(scrollController: _homeScrollController),
-      NotificationListener<UserScrollNotification>(
-        onNotification: (notification) {
-          if (notification.direction == ScrollDirection.reverse && _isNavBarVisible) {
-            setState(() => _isNavBarVisible = false);
-          } else if (notification.direction == ScrollDirection.forward && !_isNavBarVisible) {
-            setState(() => _isNavBarVisible = true);
-          }
-          return true;
-        },
-        child: const ReportsScreen(),
-      ),
-      BudgetsScreen(scrollController: _budgetsScrollController),
-      AiAdvisoryScreen(scrollController: _aiScrollController),
-      SettingsScreen(scrollController: _settingsScrollController),
-    ];
-
     return Scaffold(
-      body: Stack(
+      body: IndexedStack(
+        index: _selectedIndex,
         children: [
-          IndexedStack(
-            index: _selectedIndex,
-            children: screens,
+          HomeScreen(
+            key: ValueKey('home-$_dataVersion'),
+            scrollController: _homeScrollController,
+            onAddExpense: _addExpense,
+            onOpenInsights: () => setState(() => _selectedIndex = 3),
+            onSeeAll: () => setState(() => _selectedIndex = 1),
+            onEditExpense: (expense) => _addExpense(expense),
           ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: FloatingPillNavBar(
-              selectedIndex: _selectedIndex,
-              isVisible: _isNavBarVisible,
-              onItemTapped: (index) {
-                setState(() {
-                  _selectedIndex = index;
-                  _isNavBarVisible = true;
-                });
-              },
-            ),
+          ReportsScreen(key: ValueKey('reports-$_dataVersion')),
+          BudgetsScreen(
+            key: ValueKey('budgets-$_dataVersion'),
+            scrollController: _budgetsScrollController,
+            onDataChanged: _refreshData,
+          ),
+          AiAdvisoryScreen(
+            key: ValueKey('insights-$_dataVersion'),
+            scrollController: _aiScrollController,
+          ),
+          SettingsScreen(
+            key: ValueKey('settings-$_dataVersion'),
+            scrollController: _settingsScrollController,
+            onDataChanged: _refreshData,
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _addExpense,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Add expense'),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      bottomNavigationBar: FloatingPillNavBar(
+        selectedIndex: _selectedIndex,
+        onItemTapped: (index) => setState(() => _selectedIndex = index),
+      ),
     );
+  }
+
+  void _refreshData() {
+    if (mounted) setState(() => _dataVersion++);
+  }
+
+  Future<void> _addExpense([Expense? expense]) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => AddEditExpenseScreen(expense: expense)),
+    );
+    if (saved == true) _refreshData();
   }
 }

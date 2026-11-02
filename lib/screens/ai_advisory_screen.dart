@@ -4,6 +4,7 @@ import '../models/app_models.dart';
 import '../services/reports_engine.dart';
 import '../theme/neo_glass_theme.dart';
 import '../utils/formatters.dart';
+import '../widgets/app_components.dart';
 
 class AiAdvisoryScreen extends StatefulWidget {
   final ScrollController scrollController;
@@ -19,9 +20,8 @@ class _AiAdvisoryScreenState extends State<AiAdvisoryScreen> {
 
   List<Expense> _expenses = [];
   List<CategoryModel> _categories = [];
-  double _monthlyBudget = 50000.0;
+  double _monthlyBudget = 50000;
   bool _isLoading = true;
-
   Map<String, dynamic>? _simulationResult;
 
   @override
@@ -30,189 +30,305 @@ class _AiAdvisoryScreenState extends State<AiAdvisoryScreen> {
     _loadData();
   }
 
+  @override
+  void dispose() {
+    _simAmountController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadData() async {
     final expenses = await DatabaseHelper.instance.getAllExpenses();
     final categories = await DatabaseHelper.instance.getAllCategories();
-    final monthKey = Formatters.getMonthKey(DateTime.now());
-    final budget = await DatabaseHelper.instance.getMonthlyBudget(monthKey);
-
+    final budget = await DatabaseHelper.instance
+        .getMonthlyBudget(Formatters.getMonthKey(DateTime.now()));
+    if (!mounted) return;
     setState(() {
       _expenses = expenses;
       _categories = categories;
       _monthlyBudget = budget;
       _isLoading = false;
+      _simulationResult = null;
     });
   }
 
   void _runSimulation() {
     final cost = double.tryParse(_simAmountController.text.trim());
-    if (cost == null || cost <= 0) return;
+    if (cost == null || cost <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a purchase amount greater than zero.')),
+      );
+      return;
+    }
 
-    final result = ReportsEngine.simulatePurchase(
-      itemCost: cost,
-      currentBudget: _monthlyBudget,
-      monthExpenses: _expenses,
-      categories: _categories,
-    );
-
+    final now = DateTime.now();
+    final monthExpenses = _expenses
+        .where((expense) =>
+            expense.dateTime.year == now.year &&
+            expense.dateTime.month == now.month)
+        .toList();
     setState(() {
-      _simulationResult = result;
+      _simulationResult = ReportsEngine.simulatePurchase(
+        itemCost: cost,
+        currentBudget: _monthlyBudget,
+        monthExpenses: monthExpenses,
+        categories: _categories,
+      );
     });
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
+    final now = DateTime.now();
+    final monthExpenses = _expenses
+        .where((expense) =>
+            expense.dateTime.year == now.year &&
+            expense.dateTime.month == now.month)
+        .toList();
     final healthData = ReportsEngine.calculateFinancialHealthScoreAndInsights(
       monthlyBudget: _monthlyBudget,
-      monthExpenses: _expenses,
+      monthExpenses: monthExpenses,
       categories: _categories,
     );
-
     final score = healthData['score'] as int;
     final rating = healthData['rating'] as String;
-    final List<SmartInsight> insights = healthData['insights'] as List<SmartInsight>;
+    final insights = healthData['insights'] as List<SmartInsight>;
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text('AI Insights & What-If Simulator', style: TextStyle(color: AppColors.darkText, fontWeight: FontWeight.bold)),
-      ),
-      body: SingleChildScrollView(
-        controller: widget.scrollController,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Score Banner Glassmorphic Card
-            GlassCard(
-              child: Row(
-                children: [
-                  Container(
-                    width: 70,
-                    height: 70,
-                    decoration: const BoxDecoration(
-                      color: Colors.white24,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        '$score',
-                        style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _loadData,
+          color: AppColors.primaryPurple,
+          child: SingleChildScrollView(
+            controller: widget.scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 124),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const PageHeading(
+                  title: 'Money check-in',
+                  subtitle: 'Simple signals to help you stay on track.',
+                ),
+                GlassCard(
+                  child: Row(
                     children: [
-                      const Text('Financial Health Score', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                      Text(
-                        rating,
-                        style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                      Container(
+                        width: 68,
+                        height: 68,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.25),
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '$score',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 26,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
                       ),
-                      const Text('Updated live in-device AI', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'FINANCIAL HEALTH',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.9,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              rating,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            const Text(
+                              'Based on this month’s activity',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            const Text('Smart Insights & AI Advisory', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
-            const SizedBox(height: 12),
-
-            ...insights.map((insight) {
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: const [BoxShadow(color: AppColors.shadowDark, blurRadius: 6, offset: Offset(2, 2))],
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      insight.type == 'warning' ? Icons.warning_amber_rounded : Icons.lightbulb_rounded,
-                      color: insight.type == 'warning' ? Colors.orange : AppColors.primaryPurple,
-                      size: 26,
+                const SizedBox(height: 26),
+                const SectionHeading(title: 'Spending insights'),
+                if (insights.isEmpty)
+                  const NeoContainer(
+                    child: EmptyState(
+                      icon: Icons.lightbulb_outline_rounded,
+                      title: 'No insights just yet',
+                      message:
+                          'Add a few expenses to see patterns and helpful reminders.',
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(insight.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                          const SizedBox(height: 4),
-                          Text(insight.message, style: const TextStyle(color: AppColors.subText, fontSize: 13)),
-                        ],
+                  )
+                else
+                  for (final insight in insights)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: NeoContainer(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: insight.type == 'warning'
+                                    ? const Color(0xFFFFF1DF)
+                                    : AppColors.accentLightPurple,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                insight.type == 'warning'
+                                    ? Icons.info_outline_rounded
+                                    : Icons.lightbulb_outline_rounded,
+                                color: insight.type == 'warning'
+                                    ? AppColors.orange
+                                    : AppColors.primaryPurple,
+                                size: 19,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    insight.title,
+                                    style: const TextStyle(
+                                      color: AppColors.darkText,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    insight.message,
+                                    style: const TextStyle(
+                                      color: AppColors.subText,
+                                      fontSize: 12,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ],
+                const SizedBox(height: 18),
+                const SectionHeading(title: 'Before you buy'),
+                NeoContainer(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Try a purchase amount',
+                        style: TextStyle(
+                          color: AppColors.darkText,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      const Text(
+                        'See how it could affect your remaining monthly budget.',
+                        style: TextStyle(
+                          color: AppColors.subText,
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: _simAmountController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Purchase amount',
+                          prefixText: 'TK ',
+                        ),
+                        onSubmitted: (_) => _runSimulation(),
+                      ),
+                      const SizedBox(height: 11),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: _runSimulation,
+                          icon: const Icon(Icons.calculate_outlined),
+                          label: const Text('Estimate impact'),
+                        ),
+                      ),
+                      if (_simulationResult != null) ...[
+                        const SizedBox(height: 15),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.accentLightPurple,
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                (_simulationResult!['willExceedBudget'] as bool)
+                                    ? 'This may exceed your monthly budget.'
+                                    : 'This appears to fit within your budget.',
+                                style: const TextStyle(
+                                  color: AppColors.darkText,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                'Estimated remaining: ${Formatters.formatMoney(_simulationResult!['remainingBudgetAfterPurchase'] as double)}',
+                                style: const TextStyle(
+                                  color: AppColors.subText,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              );
-            }),
-
-            const SizedBox(height: 24),
-
-            // What-If Simulator Box
-            NeoContainer(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("What-If Simulator", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
-                  const SizedBox(height: 8),
-                  const Text("Simulate a purchase (e.g. 10,000 TK gadget) before buying to predict score drops or budget shortages.", style: TextStyle(color: AppColors.subText, fontSize: 12)),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _simAmountController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Simulate Item Price (TK)',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryPurple),
-                      onPressed: _runSimulation,
-                      child: const Text('Simulate Impact', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  if (_simulationResult != null) ...[
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppColors.accentLightPurple,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Simulated Score: ${_simulationResult!['simulatedScore']} (Drop: -${_simulationResult!['scoreDrop']} pts)', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          Text('Will Exceed Budget: ${_simulationResult!['willExceedBudget'] ? "YES ⚠️" : "NO ✅"}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          Text('Remaining Budget After: ${Formatters.formatMoney(_simulationResult!['remainingBudgetAfterPurchase'] as double)}'),
-                        ],
-                      ),
-                    ),
-                  ]
-                ],
-              ),
+              ],
             ),
-
-            const SizedBox(height: 80),
-          ],
+          ),
         ),
       ),
     );

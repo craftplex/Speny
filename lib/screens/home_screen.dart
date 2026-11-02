@@ -1,14 +1,26 @@
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/app_models.dart';
+import '../services/reports_engine.dart';
 import '../theme/neo_glass_theme.dart';
 import '../utils/formatters.dart';
-import 'add_edit_expense_screen.dart';
+import '../widgets/app_components.dart';
 
 class HomeScreen extends StatefulWidget {
   final ScrollController scrollController;
+  final VoidCallback onAddExpense;
+  final VoidCallback onOpenInsights;
+  final VoidCallback onSeeAll;
+  final ValueChanged<Expense> onEditExpense;
 
-  const HomeScreen({super.key, required this.scrollController});
+  const HomeScreen({
+    super.key,
+    required this.scrollController,
+    required this.onAddExpense,
+    required this.onOpenInsights,
+    required this.onSeeAll,
+    required this.onEditExpense,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -16,6 +28,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   List<Expense> _expenses = [];
+  List<CategoryModel> _categories = [];
   double _monthlyBudget = 50000.0;
   bool _isLoading = true;
 
@@ -27,11 +40,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadData() async {
     final expenses = await DatabaseHelper.instance.getAllExpenses();
-    final monthKey = Formatters.getMonthKey(DateTime.now());
-    final budget = await DatabaseHelper.instance.getMonthlyBudget(monthKey);
+    final categories = await DatabaseHelper.instance.getAllCategories();
+    final budget = await DatabaseHelper.instance
+        .getMonthlyBudget(Formatters.getMonthKey(DateTime.now()));
 
+    if (!mounted) return;
     setState(() {
       _expenses = expenses;
+      _categories = categories;
       _monthlyBudget = budget;
       _isLoading = false;
     });
@@ -39,248 +55,348 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    final currentMonthExpenses = _expenses.where((e) {
-      return e.dateTime.year == DateTime.now().year && e.dateTime.month == DateTime.now().month;
-    }).toList();
-
-    double totalSpentThisMonth = currentMonthExpenses.fold(0.0, (sum, e) => sum + e.amount);
-    double remainingBudget = (_monthlyBudget - totalSpentThisMonth) > 0 ? (_monthlyBudget - totalSpentThisMonth) : 0.0;
+    final now = DateTime.now();
+    final monthExpenses = _expenses
+        .where((expense) =>
+            expense.dateTime.year == now.year &&
+            expense.dateTime.month == now.month)
+        .toList();
+    final totalSpent =
+        monthExpenses.fold(0.0, (total, expense) => total + expense.amount);
+    final remaining =
+        (_monthlyBudget - totalSpent).clamp(0.0, _monthlyBudget).toDouble();
+    final budgetProgress = _monthlyBudget > 0
+        ? (totalSpent / _monthlyBudget).clamp(0.0, 1.0).toDouble()
+        : 0.0;
+    final health = ReportsEngine.calculateFinancialHealthScoreAndInsights(
+      monthlyBudget: _monthlyBudget,
+      monthExpenses: monthExpenses,
+      categories: _categories,
+    );
+    final greeting = switch (now.hour) {
+      < 12 => 'Good morning,',
+      < 17 => 'Good afternoon,',
+      _ => 'Good evening,',
+    };
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _loadData,
-          child: SingleChildScrollView(
-            controller: widget.scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Header Profile Bar
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Welcome Back', style: TextStyle(color: AppColors.subText, fontSize: 13)),
-                        SizedBox(height: 2),
-                        Text('Speny Tracker', style: TextStyle(color: AppColors.darkText, fontSize: 22, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        _buildHeaderIcon(Icons.notifications_none_rounded),
-                        const SizedBox(width: 10),
-                        _buildHeaderIcon(Icons.settings_outlined),
-                      ],
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 24),
-
-                // Hero Balance & Budget Glassmorphic Card (matching UI Design provided)
-                GlassCard(
+          color: AppColors.primaryPurple,
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  controller: widget.scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 124),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Total Balance / Spent',
-                            style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500),
+                      PageHeading(
+                        title: greeting,
+                        subtitle: DateFormatLabel.monthDay(now),
+                        trailing: Container(
+                          width: 46,
+                          height: 46,
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(
+                            color: AppColors.accentLightPurple,
+                            shape: BoxShape.circle,
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
+                          child: const Text(
+                            'S',
+                            style: TextStyle(
+                              color: AppColors.primaryPurple,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 17,
                             ),
-                            child: const Text('BDT v', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                          )
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        Formatters.formatMoney(totalSpentThisMonth),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: -0.5,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _buildGlassPill('Budget: ${Formatters.formatMoney(_monthlyBudget, short: true)}'),
-                          _buildGlassPill('Remaining: ${Formatters.formatMoney(remainingBudget, short: true)}'),
-                        ],
+                      _MonthlyOverview(
+                        totalSpent: totalSpent,
+                        budget: _monthlyBudget,
+                        remaining: remaining,
+                        progress: budgetProgress,
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Refreshed Live | ${Formatters.formatDateBD(DateTime.now())}',
-                        style: const TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.bold),
-                      )
+                      const SizedBox(height: 22),
+                      _InsightPreview(
+                        score: health['score'] as int,
+                        rating: health['rating'] as String,
+                        onTap: widget.onOpenInsights,
+                      ),
+                      const SizedBox(height: 25),
+                      SectionHeading(
+                        title: 'Recent activity',
+                        actionLabel: 'See all',
+                        onAction: widget.onSeeAll,
+                      ),
+                      NeoContainer(
+                        padding: const EdgeInsets.symmetric(horizontal: 15),
+                        child: _expenses.isEmpty
+                            ? const EmptyState(
+                                icon: Icons.receipt_long_rounded,
+                                title: 'Start with your first expense',
+                                message:
+                                    'A quick note is all it takes to see where your money goes.',
+                              )
+                            : Column(
+                                children: [
+                                  for (final expense in _expenses.take(5))
+                                    TransactionTile(
+                                      expense: expense,
+                                      onTap: () =>
+                                          widget.onEditExpense(expense),
+                                    ),
+                                ],
+                              ),
+                      ),
+                      if (_expenses.isEmpty) ...[
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: widget.onAddExpense,
+                            icon: const Icon(Icons.add_rounded),
+                            label: const Text('Add your first expense'),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
-
-                const SizedBox(height: 24),
-
-                // Quick Action Add Expense Floating Neo Button
-                NeoContainer(
-                  borderRadius: 20,
-                  onTap: () async {
-                    final res = await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const AddEditExpenseScreen()),
-                    );
-                    if (res == true) _loadData();
-                  },
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.add_circle_outline_rounded, color: AppColors.primaryPurple, size: 26),
-                      SizedBox(width: 10),
-                      Text(
-                        'Add New Expense',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primaryPurple),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 28),
-
-                // Recent Transactions Header
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Transactions', style: TextStyle(color: AppColors.darkText, fontSize: 18, fontWeight: FontWeight.bold)),
-                    GestureDetector(
-                      onTap: () {},
-                      child: const Text('See All', style: TextStyle(color: AppColors.subText, fontSize: 13, fontWeight: FontWeight.w600)),
-                    )
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-
-                // Recent Expenses List
-                _expenses.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.all(32.0),
-                        child: Center(child: Text('No expenses recorded yet.', style: TextStyle(color: AppColors.subText))),
-                      )
-                    : ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _expenses.length > 8 ? 8 : _expenses.length,
-                        itemBuilder: (context, index) {
-                          final item = _expenses[index];
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: AppColors.cardBg,
-                              borderRadius: BorderRadius.circular(18),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: AppColors.shadowDark,
-                                  offset: Offset(3, 3),
-                                  blurRadius: 8,
-                                ),
-                                BoxShadow(
-                                  color: AppColors.shadowLight,
-                                  offset: Offset(-3, -3),
-                                  blurRadius: 8,
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.accentLightPurple,
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: const Icon(Icons.shopping_bag_outlined, color: AppColors.primaryPurple, size: 20),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        item.title,
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.darkText),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        Formatters.formatDateTimeBD(item.dateTime),
-                                        style: const TextStyle(fontSize: 11, color: AppColors.subText),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Text(
-                                  Formatters.formatMoney(item.amount, short: true),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
-                                    color: AppColors.darkText,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-
-                const SizedBox(height: 80), // Extra space for floating nav bar
-              ],
-            ),
-          ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildHeaderIcon(IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: const BoxDecoration(
-        color: AppColors.cardBg,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(color: AppColors.shadowDark, offset: Offset(3, 3), blurRadius: 6),
-          BoxShadow(color: AppColors.shadowLight, offset: Offset(-3, -3), blurRadius: 6),
+class _MonthlyOverview extends StatelessWidget {
+  final double totalSpent;
+  final double budget;
+  final double remaining;
+  final double progress;
+
+  const _MonthlyOverview({
+    required this.totalSpent,
+    required this.budget,
+    required this.remaining,
+    required this.progress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      padding: const EdgeInsets.all(22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'TOTAL SPENT THIS MONTH',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  DateFormatLabel.currentMonth(DateTime.now()),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            Formatters.formatMoney(totalSpent),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.8,
+            ),
+          ),
+          const SizedBox(height: 22),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: Colors.white.withValues(alpha: 0.18),
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(Color(0xFF8DE6B7)),
+            ),
+          ),
+          const SizedBox(height: 13),
+          Row(
+            children: [
+              Expanded(
+                child: _OverviewAmount(
+                  label: 'MONTHLY BUDGET',
+                  value: Formatters.formatMoney(budget, short: true),
+                ),
+              ),
+              Expanded(
+                child: _OverviewAmount(
+                  label: 'LEFT TO SPEND',
+                  value: Formatters.formatMoney(remaining, short: true),
+                  alignEnd: true,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
-      child: Icon(icon, color: AppColors.darkText, size: 20),
     );
   }
+}
 
-  Widget _buildGlassPill(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.25),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+class _OverviewAmount extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool alignEnd;
+
+  const _OverviewAmount({
+    required this.label,
+    required this.value,
+    this.alignEnd = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment:
+          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white60,
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.7,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
+}
+
+class _InsightPreview extends StatelessWidget {
+  final int score;
+  final String rating;
+  final VoidCallback onTap;
+
+  const _InsightPreview({
+    required this.score,
+    required this.rating,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return NeoContainer(
+      padding: const EdgeInsets.all(16),
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: const BoxDecoration(
+              color: AppColors.accentLightPurple,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              color: AppColors.primaryPurple,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Your money check-in',
+                  style: TextStyle(
+                    color: AppColors.darkText,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '$rating · see your insights',
+                  style: const TextStyle(
+                    color: AppColors.subText,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '$score',
+            style: const TextStyle(
+              color: AppColors.primaryPurple,
+              fontWeight: FontWeight.w800,
+              fontSize: 20,
+            ),
+          ),
+          const SizedBox(width: 5),
+          const Icon(Icons.chevron_right_rounded, color: AppColors.subText),
+        ],
+      ),
+    );
+  }
+}
+
+class DateFormatLabel {
+  static String monthDay(DateTime date) =>
+      '${_monthNames[date.month - 1]} ${date.day}';
+
+  static String currentMonth(DateTime date) => _monthNames[date.month - 1];
+
+  static const _monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
 }
