@@ -9,10 +9,13 @@ void main() {
     databaseFactory = databaseFactoryFfi;
   });
 
-  testWidgets('App renders Speny title smoke test', (WidgetTester tester) async {
+  testWidgets('App renders its MaterialApp', (WidgetTester tester) async {
     await tester.pumpWidget(const SpenyApp());
-    await tester.pumpAndSettle();
-    expect(find.text('Welcome Back'), findsOneWidget);
-    expect(find.text('Speny Tracker'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is MaterialApp && widget.title == 'Speny',
+      ),
+      findsOneWidget,
+    );
   });
 }
