@@ -11,6 +11,7 @@ void main() {
 
   testWidgets('App renders Speny title smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const SpenyApp());
+    await tester.pumpAndSettle();
     expect(find.text('Welcome Back'), findsOneWidget);
     expect(find.text('Speny Tracker'), findsOneWidget);
   });
