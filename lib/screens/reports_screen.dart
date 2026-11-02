@@ -12,6 +12,7 @@ import '../models/app_models.dart';
 import '../services/reports_engine.dart';
 import '../theme/neo_glass_theme.dart';
 import '../utils/formatters.dart';
+import '../widgets/app_components.dart';
 
 class ReportsScreen extends StatefulWidget {
   final VoidCallback? onRefreshNeeded;
@@ -52,10 +53,39 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  List<Expense> _expensesForSelectedPeriod() {
+    final now = DateTime.now();
+    late final DateTime start;
+    late final DateTime end;
+    switch (_filterPeriod) {
+      case 'Daily':
+        start = DateTime(now.year, now.month, now.day);
+        end = start.add(const Duration(days: 1));
+        break;
+      case 'Weekly':
+        start = Formatters.getStartOfWeek(now);
+        end = start.add(const Duration(days: 7));
+        break;
+      case 'Yearly':
+        start = DateTime(now.year);
+        end = DateTime(now.year + 1);
+        break;
+      default:
+        start = DateTime(now.year, now.month);
+        end = DateTime(now.year, now.month + 1);
+    }
+
+    return _expenses
+        .where((expense) =>
+            !expense.dateTime.isBefore(start) && expense.dateTime.isBefore(end))
+        .toList();
+  }
+
   // PDF Export
   Future<void> _exportPDF() async {
+    final expenses = _expensesForSelectedPeriod();
     final pdf = pw.Document();
-    final totalSpent = _expenses.fold(0.0, (sum, e) => sum + e.amount);
+    final totalSpent = expenses.fold(0.0, (sum, e) => sum + e.amount);
 
     pdf.addPage(
       pw.Page(
@@ -70,7 +100,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               pw.SizedBox(height: 20),
               pw.TableHelper.fromTextArray(
                 headers: ['Title', 'Category', 'Amount', 'Date', 'Type'],
-                data: _expenses.map((e) => [
+                data: expenses.map((e) => [
                   e.title,
                   e.categoryName ?? '',
                   Formatters.formatMoney(e.amount, short: true),
@@ -93,10 +123,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   // CSV Export
   Future<void> _exportCSV() async {
+    final expenses = _expensesForSelectedPeriod();
     List<List<dynamic>> rows = [];
     rows.add(['ID', 'Title', 'Category', 'Amount (TK)', 'Date Time', 'Type', 'Vendor']);
 
-    for (var e in _expenses) {
+    for (var e in expenses) {
       rows.add([
         e.id,
         e.title,
@@ -122,30 +153,49 @@ class _ReportsScreenState extends State<ReportsScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final categoryBreakdown = ReportsEngine.getCategoryBreakdown(_expenses, _categories);
-    final dailyTrend = ReportsEngine.getDailyAverageAndTrend(_expenses, days: 30);
+    final now = DateTime.now();
+    final periodExpenses = _expensesForSelectedPeriod();
+    final categoryBreakdown =
+        ReportsEngine.getCategoryBreakdown(periodExpenses, _categories);
+    final recentExpenses = _expenses.where((expense) {
+      final today = DateTime(now.year, now.month, now.day);
+      return !expense.dateTime.isBefore(today.subtract(const Duration(days: 29))) &&
+          expense.dateTime.isBefore(today.add(const Duration(days: 1)));
+    }).toList();
+    final dailyTrend =
+        ReportsEngine.getDailyAverageAndTrend(recentExpenses, days: 30);
     final dailyMap = dailyTrend['dailyTrendMap'] as Map<DateTime, double>;
     final dailySpots = dailyMap.entries.toList().asMap().entries.map((entry) {
       return FlSpot(entry.key.toDouble(), entry.value.value);
     }).toList();
 
-    final needsWants = ReportsEngine.getNeedsVsWantsBreakdown(_expenses);
-    final velocity = ReportsEngine.getSpendingVelocityReport(_monthlyBudget, _expenses);
-    final topOutliers = ReportsEngine.getTopOutlierExpenses(_expenses, limit: 5);
-    final vendors = ReportsEngine.getVendorIntelligence(_expenses);
+    final needsWants = ReportsEngine.getNeedsVsWantsBreakdown(periodExpenses);
+    final currentMonthExpenses = _expenses.where((expense) {
+      return expense.dateTime.year == now.year &&
+          expense.dateTime.month == now.month;
+    }).toList();
+    final velocity =
+        ReportsEngine.getSpendingVelocityReport(_monthlyBudget, currentMonthExpenses);
+    final topOutliers =
+        ReportsEngine.getTopOutlierExpenses(periodExpenses, limit: 5);
+    final vendors = ReportsEngine.getVendorIntelligence(periodExpenses);
     final noSpend = ReportsEngine.getNoSpendDaysAndStreak(_expenses);
-    final microSavings = ReportsEngine.getOpportunityCostAnalysis(_expenses);
-    final heatmapData = ReportsEngine.getYearlyHeatmapData(_expenses);
-    final categoryBudgets = ReportsEngine.getCategoryBudgetvsActual(_expenses, _categories);
-
-    final totalSpentThisMonth = _expenses.fold(0.0, (sum, e) => sum + e.amount);
+    final microSavings =
+        ReportsEngine.getOpportunityCostAnalysis(currentMonthExpenses);
+    final yearExpenses =
+        _expenses.where((e) => e.dateTime.year == now.year).toList();
+    final heatmapData = ReportsEngine.getYearlyHeatmapData(yearExpenses);
+    final categoryBudgets =
+        ReportsEngine.getCategoryBudgetvsActual(currentMonthExpenses, _categories);
+    final totalSpentSelectedPeriod =
+        periodExpenses.fold(0.0, (sum, e) => sum + e.amount);
+    final totalSpentThisMonth =
+        currentMonthExpenses.fold(0.0, (sum, e) => sum + e.amount);
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text('Detailed Financial Reports', style: TextStyle(color: AppColors.darkText, fontWeight: FontWeight.bold)),
+        title: const Text('Insights'),
         actions: [
           IconButton(
             icon: const Icon(Icons.picture_as_pdf_rounded, color: AppColors.primaryPurple),
@@ -162,41 +212,88 @@ class _ReportsScreenState extends State<ReportsScreen> {
       body: RefreshIndicator(
         onRefresh: _loadData,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 124),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Period Filter Tabs
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: ['Daily', 'Weekly', 'Monthly', 'Yearly'].map((p) {
-                  final isSel = _filterPeriod == p;
-                  return GestureDetector(
-                    onTap: () => setState(() => _filterPeriod = p),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isSel ? AppColors.primaryPurple : AppColors.cardBg,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: const [BoxShadow(color: AppColors.shadowDark, blurRadius: 4, offset: Offset(2, 2))],
-                      ),
-                      child: Text(
-                        p,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: isSel ? Colors.white : AppColors.darkText,
+              const PageHeading(
+                title: 'Spending insights',
+                subtitle: 'A clearer picture of where your money goes.',
+              ),
+              NeoContainer(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                child: Row(
+                  children: ['Daily', 'Weekly', 'Monthly', 'Yearly'].map((period) {
+                    final selected = _filterPeriod == period;
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: ChoiceChip(
+                          label: Text(period),
+                          selected: selected,
+                          showCheckmark: false,
+                          onSelected: (_) =>
+                              setState(() => _filterPeriod = period),
+                          labelStyle: TextStyle(
+                            color: selected ? Colors.white : AppColors.subText,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          selectedColor: AppColors.primaryPurple,
+                          backgroundColor: Colors.transparent,
+                          side: BorderSide.none,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                }).toList(),
+                    );
+                  }).toList(),
+                ),
               ),
-
-              const SizedBox(height: 24),
-
-              // 1. Category Breakdown
+              const SizedBox(height: 17),
+              NeoContainer(
+                backgroundColor: AppColors.paleGreen,
+                child: Row(
+                  children: [
+                    const Icon(Icons.insights_rounded,
+                        color: AppColors.primaryPurple, size: 23),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            Formatters.formatMoney(totalSpentSelectedPeriod),
+                            style: const TextStyle(
+                              color: AppColors.darkText,
+                              fontSize: 21,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          Text(
+                            'Total spending · $_filterPeriod',
+                            style: const TextStyle(
+                                color: AppColors.subText, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      '${periodExpenses.length} ${periodExpenses.length == 1 ? 'expense' : 'expenses'}',
+                      style: const TextStyle(
+                        color: AppColors.primaryPurple,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
               _buildReportCard(
-                title: '1. Category Breakdown (Pie / Donut)',
+                title: 'By category',
                 child: Column(
                   children: [
                     SizedBox(
@@ -209,7 +306,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                   return PieChartSectionData(
                                     value: item.totalAmount,
                                     title: '${item.percentage.toStringAsFixed(0)}%',
-                                    color: AppColors.primaryPurple.withValues(alpha: 0.8),
+                                    color: categoryColorFor(item.categoryName),
                                     radius: 45,
                                     titleStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12),
                                   );
@@ -234,9 +331,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               const SizedBox(height: 16),
 
-              // 2. Budget vs Expense Bar Chart
+              // Budget vs expense
               _buildReportCard(
-                title: '2. Overall Budget vs Spent Ratio',
+                title: 'Monthly budget vs spent',
                 child: Column(
                   children: [
                     SizedBox(
@@ -247,7 +344,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           titlesData: const FlTitlesData(show: false),
                           barGroups: [
                             BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: _monthlyBudget, color: AppColors.primaryPurple, width: 24)]),
-                            BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: totalSpentThisMonth, color: Colors.pinkAccent, width: 24)]),
+                            BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: totalSpentThisMonth, color: AppColors.orange, width: 24)]),
                           ],
                         ),
                       ),
@@ -257,7 +354,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
                         Text('Budget: ${Formatters.formatMoney(_monthlyBudget, short: true)}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryPurple)),
-                        Text('Spent: ${Formatters.formatMoney(totalSpentThisMonth, short: true)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.pinkAccent)),
+                        Text('Spent: ${Formatters.formatMoney(totalSpentThisMonth, short: true)}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.orange)),
                       ],
                     )
                   ],
@@ -268,7 +365,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               // 3. Category Budget vs Actual
               _buildReportCard(
-                title: '3. Category Budget vs Actual Spent',
+                title: 'This month’s category budgets',
                 child: Column(
                   children: categoryBudgets.map((item) {
                     final catName = item['categoryName'] as String;
@@ -288,7 +385,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           ),
                           const SizedBox(height: 4),
                           LinearProgressIndicator(
-                            value: budget > 0 ? (spent / budget).clamp(0.0, 1.0) : 0.0,
+                            value: budget > 0
+                                ? (spent / budget).clamp(0.0, 1.0).toDouble()
+                                : 0.0,
                             color: spent > budget && budget > 0 ? Colors.red : AppColors.primaryPurple,
                             backgroundColor: AppColors.accentLightPurple,
                           )
@@ -303,7 +402,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               // 4. Daily Average & Spending Trend Line Graph
               _buildReportCard(
-                title: '4. Daily Average & Spending Trend',
+                title: '30-day spending trend',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -339,7 +438,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               // 5. GitHub-style Heatmap Calendar
               _buildReportCard(
-                title: '5. Yearly Heatmap Calendar',
+                title: 'Recent spending map',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -353,10 +452,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         crossAxisSpacing: 4,
                         mainAxisSpacing: 4,
                       ),
-                      itemCount: 36,
+                      itemCount: 84,
                       itemBuilder: (context, index) {
-                        int level = index % 5;
-                        Color cellColor = Colors.grey.shade200;
+                          final date = DateTime(now.year, now.month, now.day)
+                              .subtract(Duration(days: 83 - index));
+                          final day = DateTime(date.year, date.month, date.day);
+                          final level = heatmapData[day] ?? 0;
+                          Color cellColor = AppColors.background;
                         if (level == 1) cellColor = AppColors.primaryPurple.withValues(alpha: 0.3);
                         if (level == 2) cellColor = AppColors.primaryPurple.withValues(alpha: 0.5);
                         if (level == 3) cellColor = AppColors.primaryPurple.withValues(alpha: 0.8);
@@ -378,7 +480,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               // 6. Needs vs Wants Breakdown (50/30/20 Rule)
               _buildReportCard(
-                title: '6. Needs vs Wants (50/30/20 Rule)',
+                title: 'Needs and wants',
                 child: Column(
                   children: [
                     Row(
@@ -406,7 +508,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               // 7. Spending Velocity / Burn Rate
               _buildReportCard(
-                title: '7. Spending Velocity / Burn Rate',
+                title: 'Monthly spending pace',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -427,7 +529,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               // 8. Top Outlier Expenses
               _buildReportCard(
-                title: '8. Top Outlier Expenses',
+                title: 'Largest expenses',
                 child: Column(
                   children: topOutliers.map((e) {
                     return Padding(
@@ -448,7 +550,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               // 9. Top Vendors & Merchant Intelligence
               _buildReportCard(
-                title: '9. Top Vendors & Merchants',
+                title: 'Top merchants',
                 child: Column(
                   children: vendors.take(4).map((v) {
                     return Padding(
@@ -469,7 +571,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               // 10. Streak & Savings
               _buildReportCard(
-                title: '10. No-Spend Streak & Savings',
+                title: 'No-spend and savings',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -494,7 +596,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.darkText)),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.darkText)),
           const SizedBox(height: 12),
           child,
         ],

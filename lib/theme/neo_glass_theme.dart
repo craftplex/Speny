@@ -1,41 +1,109 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
 class AppColors {
-  static const Color background = Color(0xFFF3F5F9);
-  static const Color cardBg = Color(0xFFF8F9FC);
-  static const Color primaryPurple = Color(0xFF8A62F6);
-  static const Color secondaryPurple = Color(0xFFB597FE);
-  static const Color accentLightPurple = Color(0xFFECE6FF);
-  static const Color darkText = Color(0xFF1D1E2C);
-  static const Color subText = Color(0xFF7A7E9A);
-  static const Color darkNavBg = Color(0xFF14151C);
-
+  static const Color background = Color(0xFFF5F8F5);
+  static const Color cardBg = Color(0xFFFFFFFF);
+  static const Color primaryPurple = Color(0xFF087F5B);
+  static const Color secondaryPurple = Color(0xFF36B58A);
+  static const Color accentLightPurple = Color(0xFFE5F5EC);
+  static const Color darkText = Color(0xFF142D25);
+  static const Color subText = Color(0xFF75847C);
+  static const Color darkNavBg = Color(0xFFFFFFFF);
   static const Color shadowLight = Color(0xFFFFFFFF);
-  static const Color shadowDark = Color(0xFFD3D8E5);
-
-  static const Color green = Color(0xFF4CAF50);
-  static const Color red = Color(0xFFFF5252);
-  static const Color orange = Color(0xFFFF9800);
+  static const Color shadowDark = Color(0xFFE6ECE7);
+  static const Color green = Color(0xFF16845D);
+  static const Color red = Color(0xFFD95F5B);
+  static const Color orange = Color(0xFFE39A45);
+  static const Color line = Color(0xFFE9EFEB);
+  static const Color paleGreen = Color(0xFFEAF6EF);
 }
 
 class NeoGlassTheme {
   static ThemeData get theme {
+    const colorScheme = ColorScheme(
+      brightness: Brightness.light,
+      primary: AppColors.primaryPurple,
+      onPrimary: Colors.white,
+      secondary: AppColors.secondaryPurple,
+      onSecondary: Colors.white,
+      error: AppColors.red,
+      onError: Colors.white,
+      surface: AppColors.cardBg,
+      onSurface: AppColors.darkText,
+    );
+
     return ThemeData(
       useMaterial3: true,
+      colorScheme: colorScheme,
       scaffoldBackgroundColor: AppColors.background,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: AppColors.primaryPurple,
-        primary: AppColors.primaryPurple,
-        background: AppColors.background,
-        surface: AppColors.cardBg,
-      ),
       fontFamily: 'Roboto',
+      appBarTheme: const AppBarTheme(
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.darkText,
+        elevation: 0,
+        centerTitle: false,
+        scrolledUnderElevation: 0,
+        titleTextStyle: TextStyle(
+          color: AppColors.darkText,
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      cardTheme: CardThemeData(
+        color: AppColors.cardBg,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: const BorderSide(color: AppColors.line),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: AppColors.background,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        hintStyle: const TextStyle(color: AppColors.subText),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.line),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.primaryPurple, width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.red),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          foregroundColor: Colors.white,
+          backgroundColor: AppColors.primaryPurple,
+          minimumSize: const Size(0, 52),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          elevation: 0,
+          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      dividerTheme: const DividerThemeData(
+        color: AppColors.line,
+        thickness: 1,
+        space: 1,
+      ),
     );
   }
 }
 
-/// Neomorphic Container Widget
 class NeoContainer extends StatelessWidget {
   final Widget child;
   final double? width;
@@ -62,43 +130,36 @@ class NeoContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final card = AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
       width: width,
       height: height,
-      margin: margin,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: padding ?? const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(borderRadius),
-            boxShadow: isPressed
-                ? []
-                : const [
-                    BoxShadow(
-                      color: AppColors.shadowLight,
-                      offset: Offset(-4, -4),
-                      blurRadius: 10,
-                      spreadRadius: 1,
-                    ),
-                    BoxShadow(
-                      color: AppColors.shadowDark,
-                      offset: Offset(4, 4),
-                      blurRadius: 10,
-                      spreadRadius: 1,
-                    ),
-                  ],
-          ),
-          child: child,
-        ),
+      padding: padding ?? const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(color: AppColors.line),
       ),
+      child: child,
+    );
+
+    return Padding(
+      padding: margin ?? EdgeInsets.zero,
+      child: onTap == null
+          ? card
+          : Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(borderRadius),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(borderRadius),
+                onTap: onTap,
+                child: card,
+              ),
+            ),
     );
   }
 }
 
-/// Glassmorphic Card Widget with optional gradient and soft backdrop blur effect
 class GlassCard extends StatelessWidget {
   final Widget child;
   final double? width;
@@ -127,35 +188,25 @@ class GlassCard extends StatelessWidget {
       width: width,
       height: height,
       margin: margin,
-      child: ClipRRect(
+      padding: padding ?? const EdgeInsets.all(22),
+      decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(borderRadius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            padding: padding ?? const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(borderRadius),
-              border: border ?? Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: gradientColors ?? [
-                  AppColors.primaryPurple,
-                  AppColors.secondaryPurple,
-                ],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryPurple.withOpacity(0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                )
-              ],
-            ),
-            child: child,
-          ),
+        border: border ?? Border.all(color: Colors.white.withValues(alpha: 0.18)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: gradientColors ??
+              const [Color(0xFF075C43), Color(0xFF128562), Color(0xFF31A77B)],
         ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryPurple.withValues(alpha: 0.14),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
+      child: child,
     );
   }
 }

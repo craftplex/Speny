@@ -1,20 +1,28 @@
 import 'package:flutter/material.dart';
+import '../app_metadata.dart';
 import '../database/database_helper.dart';
 import '../models/app_models.dart';
 import '../theme/neo_glass_theme.dart';
+import '../widgets/app_components.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ScrollController scrollController;
+  final VoidCallback onDataChanged;
 
-  const SettingsScreen({super.key, required this.scrollController});
+  const SettingsScreen({
+    super.key,
+    required this.scrollController,
+    required this.onDataChanged,
+  });
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  List<CategoryModel> _categories = [];
   final _catNameController = TextEditingController();
+  List<CategoryModel> _categories = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -22,118 +30,281 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadCategories();
   }
 
+  @override
+  void dispose() {
+    _catNameController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadCategories() async {
-    final cats = await DatabaseHelper.instance.getAllCategories();
+    final categories = await DatabaseHelper.instance.getAllCategories();
+    if (!mounted) return;
     setState(() {
-      _categories = cats;
+      _categories = categories;
+      _isLoading = false;
     });
   }
 
   Future<void> _addCategory() async {
     final name = _catNameController.text.trim();
-    if (name.isEmpty) return;
+    if (name.isEmpty) {
+      _showMessage('Enter a category name first.');
+      return;
+    }
 
-    final cat = CategoryModel(
-      name: name,
-      iconName: 'category',
-      colorHex: 0xFF8A62F6,
+    if (_categories.any((category) =>
+        category.name.toLowerCase() == name.toLowerCase())) {
+      _showMessage('That category already exists.');
+      return;
+    }
+
+    await DatabaseHelper.instance.insertCategory(
+      CategoryModel(
+        name: name,
+        iconName: 'category',
+        colorHex: AppColors.primaryPurple.toARGB32(),
+      ),
     );
-
-    await DatabaseHelper.instance.insertCategory(cat);
+    if (!mounted) return;
     _catNameController.clear();
-    _loadCategories();
+    await _loadCategories();
+    widget.onDataChanged();
+    _showMessage('Category added.');
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text('Categories & Settings', style: TextStyle(color: AppColors.darkText, fontWeight: FontWeight.bold)),
-      ),
-      body: SingleChildScrollView(
-        controller: widget.scrollController,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // App Info Box
-            NeoContainer(
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Speny Expense Tracker', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  SizedBox(height: 4),
-                  Text('Package: com.craftplex.speny', style: TextStyle(color: AppColors.subText, fontSize: 12)),
-                  Text('Version: 0.0.1 (1)', style: TextStyle(color: AppColors.subText, fontSize: 12)),
-                  SizedBox(height: 8),
-                  Text('Time Format: BD 12H (Start: Sun, Off: Fri-Sat)', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.primaryPurple, fontSize: 12)),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Add Category Section
-            NeoContainer(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Add Custom Category', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _catNameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Category Name',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryPurple),
-                      onPressed: _addCategory,
-                      child: const Text('Add Category', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    ),
-                  )
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            const Text('Categories List', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 12),
-
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _categories.length,
-              itemBuilder: (context, index) {
-                final cat = _categories[index];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _loadCategories,
+          color: AppColors.primaryPurple,
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  controller: widget.scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 124),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.category_outlined, color: AppColors.primaryPurple),
-                      const SizedBox(width: 12),
-                      Text(cat.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      PageHeading(
+                        title: 'Your space',
+                        subtitle: 'A few details that make Speny yours.',
+                        trailing: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: const BoxDecoration(
+                            color: AppColors.accentLightPurple,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.person_rounded,
+                            color: AppColors.primaryPurple,
+                          ),
+                        ),
+                      ),
+                      NeoContainer(
+                        padding: const EdgeInsets.all(20),
+                        backgroundColor: AppColors.primaryPurple,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 54,
+                              height: 54,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: const Icon(
+                                Icons.spa_rounded,
+                                color: Colors.white,
+                                size: 28,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Speny',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Your money, made clearer.',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              'v${AppMetadata.version}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 26),
+                      const SectionHeading(title: 'Categories'),
+                      NeoContainer(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Make your spending easier to organize.',
+                              style: TextStyle(
+                                color: AppColors.subText,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _catNameController,
+                                    textCapitalization:
+                                        TextCapitalization.words,
+                                    decoration: const InputDecoration(
+                                      hintText: 'e.g. Pet care',
+                                      prefixIcon: Icon(Icons.sell_outlined),
+                                    ),
+                                    onSubmitted: (_) => _addCategory(),
+                                  ),
+                                ),
+                                const SizedBox(width: 9),
+                                IconButton.filled(
+                                  onPressed: _addCategory,
+                                  tooltip: 'Add category',
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: AppColors.primaryPurple,
+                                    foregroundColor: Colors.white,
+                                    minimumSize: const Size(52, 52),
+                                  ),
+                                  icon: const Icon(Icons.add_rounded),
+                                ),
+                              ],
+                            ),
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 13),
+                              child: Divider(height: 1),
+                            ),
+                            if (_categories.isEmpty)
+                              const EmptyState(
+                                icon: Icons.category_outlined,
+                                title: 'No categories yet',
+                                message: 'Your categories will appear here.',
+                              )
+                            else
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: _categories.map((category) {
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 9,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.background,
+                                      borderRadius: BorderRadius.circular(30),
+                                      border: Border.all(color: AppColors.line),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.sell_outlined,
+                                          size: 15,
+                                          color: AppColors.primaryPurple,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          category.name,
+                                          style: const TextStyle(
+                                            color: AppColors.darkText,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      NeoContainer(
+                        padding: const EdgeInsets.all(17),
+                        child: const Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.lock_outline_rounded,
+                              color: AppColors.primaryPurple,
+                            ),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Private by design',
+                                    style: TextStyle(
+                                      color: AppColors.darkText,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Your expense records are stored locally on this device.',
+                                    style: TextStyle(
+                                      color: AppColors.subText,
+                                      fontSize: 12,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Center(
+                        child: Text(
+                          'Speny · build ${AppMetadata.buildNumber}',
+                          style: const TextStyle(
+                            color: AppColors.subText,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                );
-              },
-            ),
-
-            const SizedBox(height: 80),
-          ],
+                ),
         ),
       ),
     );

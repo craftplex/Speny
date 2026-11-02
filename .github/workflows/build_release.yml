@@ -100,6 +100,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
       - name: Download Android APK
         uses: actions/download-artifact@v4
         with:
@@ -110,6 +113,8 @@ jobs:
         id: release_tag
         shell: bash
         run: |
+          VERSION=$(sed -n 's/^version: *//p' pubspec.yaml)
+          echo "app_version=$VERSION" >> "$GITHUB_OUTPUT"
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             echo "name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
           else
@@ -120,14 +125,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.name }}
-          name: Speny ${{ steps.release_tag.outputs.name }}
+          name: Speny ${{ steps.release_tag.outputs.name }} (v${{ steps.release_tag.outputs.app_version }})
           target_commitish: ${{ github.sha }}
           make_latest: true
           draft: false
           prerelease: false
           files: release-assets/Speny-Android.apk
           body: |
-            Automated Android APK build for Speny.
+            **Speny v${{ steps.release_tag.outputs.app_version }}**
+
+            Automated Android APK build. Install `Speny-Android.apk` on an Android device.
             Signed with the Android signing key configured in this repository's Actions secrets.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
