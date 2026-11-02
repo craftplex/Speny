@@ -28,5 +28,9 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
 
+dependency_overrides:
+  # image 4.11.0 uses decodeLazy, which is not present in archive 4.0.9.
+  archive: ^4.5.0
+
 flutter:
   uses-material-design: true

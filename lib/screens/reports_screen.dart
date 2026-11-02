@@ -108,7 +108,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ]);
     }
 
-    String csvData = ListToCsvConverter().convert(rows);
+    String csvData = csv.encode(rows);
     final output = await getTemporaryDirectory();
     final file = File('${output.path}/Speny_Report.csv');
     await file.writeAsString(csvData);
