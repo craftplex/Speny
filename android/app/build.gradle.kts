@@ -5,10 +5,32 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val androidKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+val androidKeystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+val androidKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+val androidKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+val hasAndroidReleaseSigning = listOf(
+    androidKeystorePath,
+    androidKeystorePassword,
+    androidKeyAlias,
+    androidKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.craftplex.speny"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+
+    signingConfigs {
+        if (hasAndroidReleaseSigning) {
+            create("release") {
+                storeFile = file(requireNotNull(androidKeystorePath))
+                storePassword = requireNotNull(androidKeystorePassword)
+                keyAlias = requireNotNull(androidKeyAlias)
+                keyPassword = requireNotNull(androidKeyPassword)
+            }
+        }
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -32,9 +54,11 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasAndroidReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }
