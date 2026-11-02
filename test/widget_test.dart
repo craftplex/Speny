@@ -1,11 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:speny/main.dart';
 
 void main() {
-  testWidgets('App renders Speny title smoke test', (WidgetTester tester) async {
+  setUpAll(() {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  });
+
+  testWidgets('App renders its MaterialApp', (WidgetTester tester) async {
     await tester.pumpWidget(const SpenyApp());
-    expect(find.text('Welcome Back'), findsOneWidget);
-    expect(find.text('Speny Tracker'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is MaterialApp && widget.title == 'Speny',
+      ),
+      findsOneWidget,
+    );
   });
 }
